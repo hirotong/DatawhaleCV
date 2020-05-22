@@ -152,6 +152,9 @@ def find_jaccard_overlap(set_1:torch.Tensor, set_2:torch.Tensor):
     area_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  #(n1)
     areas_set_2 = (set_2[:, 2] - set_2[:, 0]) * (set_2[:, 3] - set_2[:, 1])  # (n2)
 
+    union = area_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection   #(n1, n2)
+
+    return intersection / union #(n1, n2)
 
 def photometric_distort(image):
     """
