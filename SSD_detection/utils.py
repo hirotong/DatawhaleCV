@@ -138,7 +138,7 @@ def find_intersection(set_1: torch.Tensor, set_2: torch.Tensor):
     return intersection_dims[:, :, 0] * intersection_dims[:, :, 1]  # (n1, n2)
 
 
-def find_jaccard_overlap(set_1:torch.Tensor, set_2:torch.Tensor):
+def find_jaccard_overlap(set_1: torch.Tensor, set_2: torch.Tensor):
     """
     Find the Jaccard Overlap (IoU) of every box combination between two sets of boxes that are in boundary coordinates.
 
@@ -147,14 +147,15 @@ def find_jaccard_overlap(set_1:torch.Tensor, set_2:torch.Tensor):
     :return: Jaccard Overlap of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
     """
 
-    intersection = find_intersection(set_1, set_2)  #(n1, n2)
+    intersection = find_intersection(set_1, set_2)  # (n1, n2)
 
-    area_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  #(n1)
+    area_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  # (n1)
     areas_set_2 = (set_2[:, 2] - set_2[:, 0]) * (set_2[:, 3] - set_2[:, 1])  # (n2)
 
-    union = area_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection   #(n1, n2)
+    union = area_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
 
-    return intersection / union #(n1, n2)
+    return intersection / union  # (n1, n2)
+
 
 def photometric_distort(image):
     """
@@ -338,9 +339,66 @@ def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
     return new_boxes
 
 
-def transform():
-    pass
+def transform(image, boxes, labels, difficulties, split):
+    """
+    Apply the transformations above.
 
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :param labels: labels of objects, a tensor of dimensions (n_objects)
+    :param difficulties: difficulties of detection of these objects, a tensor of dimensions (n_objects)
+    :param split: one of 'TRAIN' or 'TEST', since different sets of transformations are applied
+    :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
+    """
+
+    assert split in {'TRAIN', 'TEST'}
+
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+
+    new_image = image
+    new_boxes = boxes
+    new_labels = labels
+    new_difficulties = difficulties
+
+    if split == 'TRAIN':
+        new_image = photometric_distort(new_image)
+
+        new_image = FT.to_tensor(new_image)
+
+        if random.random() < 0.5:
+            new_image, new_boxes = expand(new_image, boxes, filler=mean)
+            new_image, new_boxes, new_labels, new_difficulties = random_crop(new_image, new_boxes, new_labels,
+                new_difficulties)
+
+        # Convert Torch tensor to PIL image
+        new_image = FT.to_pil_image(new_image)
+
+        # Flip image with a 50% chance
+        if random.random() < 0.5:
+            new_image, new_boxes = flip(new_image, new_boxes)
+
+    new_image, new_boxes = resize(new_image, new_boxes, dims=(300, 300))
+    new_image = FT.to_tensor(new_image)
+    new_image = FT.normalize(new_image, mean=mean, std=std)
+
+    return new_image, new_boxes, new_labels, new_difficulties
+
+def decimate(tensor:torch.Tensor, m):
+    """
+    Decimate a tensor by a factor 'm', i.e. downsample by keeping every 'm'th value.
+
+    This is used when we convert FC layers to equivalent Convolutional layers, BUT of a smaller size.
+
+    :param tensor: tensor to be decimated
+    :param m: list of decimation factors for each dimension of the tensor; None if not to be decimated along a dimension
+    :return: decimated tensor
+    """
+    assert  tensor.dim() == len(m)
+    for d in range(tensor.dim()):
+        if m[d] is not None:
+            tensor = tensor.index_select(dim=d, index=torch.arange(0, end=tensor.size(d), step=m[d]).long())
+    return tensor
 
 if __name__ == '__main__':
     creat_data_lists(r'D:\OneDrive - zju.edu.cn\dataset\VOC\VOC2007', r'D:\OneDrive - '
