@@ -122,6 +122,37 @@ def creat_data_lists(voc07_path, voc12_path, output_folder):
         len(test_images), n_objects, os.path.abspath(output_folder)))
 
 
+def find_intersection(set_1: torch.Tensor, set_2: torch.Tensor):
+    """
+    Find the intersection of every box combination between two sets of boxes that are in boundary coordinates.
+
+    :param set_1: set 1, a tensor of dimensions (n1, 4)
+    :param set_2: set 2, a tensor of dimensions (n2, 4)
+    :return: intersection of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
+    """
+
+    lower_bounds = torch.max(set_1[:, :2].unsqueeze(1), set_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
+    upper_bounds = torch.min(set_1[:, 2:].unsqueeze(1), set_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)
+    intersection_dims = torch.clamp(upper_bounds - lower_bounds, min=0)  # (n1, n2, 2)
+
+    return intersection_dims[:, :, 0] * intersection_dims[:, :, 1]  # (n1, n2)
+
+
+def find_jaccard_overlap(set_1:torch.Tensor, set_2:torch.Tensor):
+    """
+    Find the Jaccard Overlap (IoU) of every box combination between two sets of boxes that are in boundary coordinates.
+
+    :param set_1: set 1, a tensor of dimensions (n1, 4)
+    :param set_2: set 2, a tensor of dimensions (n2, 4)
+    :return: Jaccard Overlap of each of the boxes in set 1 with respect to each of the boxes in set 2, a tensor of dimensions (n1, n2)
+    """
+
+    intersection = find_intersection(set_1, set_2)  #(n1, n2)
+
+    area_set_1 = (set_1[:, 2] - set_1[:, 0]) * (set_1[:, 3] - set_1[:, 1])  #(n1)
+    areas_set_2 = (set_2[:, 2] - set_2[:, 0]) * (set_2[:, 3] - set_2[:, 1])  # (n2)
+
+
 def photometric_distort(image):
     """
     Distort brightness, contrast, saturation, and hue, each with a 50% chance, in random order
@@ -229,24 +260,24 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
             crop = torch.FloatTensor([left, top, right, bottom])  # (4)
 
             # Calculate Jaccard overlap between the crop and the bounding boxes
-            overlap = find_jaccard_overlap(crop.unsqueeze(0), boxes)    #(1, n_objects)
+            overlap = find_jaccard_overlap(crop.unsqueeze(0), boxes)  # (1, n_objects)
             if overlap.max().item() < min_overlap:
                 continue
 
             # Crop image
-            new_image = image[:, top: bottom, left: right]      #(3, new_h, new_w)
+            new_image = image[:, top: bottom, left: right]  # (3, new_h, new_w)
 
             # Find centers of original bouding boxes
             bb_centers = (boxes[:, :2] + boxes[:, 2:]) / 2.
 
-            centers_in_crop = (bb_centers[:, 0] > left) * (bb_centers[:, 0] <right) * (bb_centers[:, 1] > top) * (
-                bb_centers[:, 1] < bottom)  #(n_objects), a Torch uint8/Byte tensor, can be used as a boolean index
+            centers_in_crop = (bb_centers[:, 0] > left) * (bb_centers[:, 0] < right) * (bb_centers[:, 1] > top) * (
+                    bb_centers[:, 1] < bottom)  # (n_objects), a Torch uint8/Byte tensor, can be used as a boolean index
 
             if not centers_in_crop.any():
                 continue
 
             # Discard the bouding boxes that don't meet this criterion
-            new_boxes = boxes[centers_in_crop,:]
+            new_boxes = boxes[centers_in_crop, :]
             new_labels = labels[centers_in_crop]
             new_difficulties = difficulties[centers_in_crop]
 
@@ -256,9 +287,52 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
             new_boxes[:, 2:] = torch.min(new_boxes[:, 2:], crop[2:])  # crop[2:] is [right, bottom]
             new_boxes[:, 2:] -= crop[:2]
 
-            return new_image, new
+            return new_image, new_boxes, new_labels, new_difficulties
 
 
+def flip(image, boxes):
+    """
+    Flip image horizontally
+    :param image: image, a PIL image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :return: flipped image, update bounding box coordinates
+    """
+
+    # Flip image
+    new_image = FT.hflip(image)
+
+    # Flip boxes
+    new_boxes = boxes
+    new_boxes[:, 0] = image.width - boxes[:, 0] - 1
+    new_boxes[:, 2] = image.width - boxes[:, 2] - 1
+    new_boxes = new_boxes[:, [2, 1, 0, 3]]
+
+    return new_image, new_boxes
+
+
+def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
+    """
+    Resize image. For the SSD300, resize to (300, 300).
+
+    Since percent/fractional coordinates are calculated for the bounding boxes (w.r.t image dimensions) in this process,
+    you may choose to retain them.
+
+    :param image: image, a PIL Image
+    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
+    :param dims: target resize size in format of (h, w)
+    :return: resized image, updated bounding box coordinates (or fractional coordinates, in which case they remain the same)
+    """
+
+    new_image = FT.resize(image, dims)
+
+    old_dims = torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0)
+    new_boxes = boxes / old_dims  # percent coordinates
+
+    if not return_percent_coords:
+        new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
+        new_boxes = new_boxes * new_dims
+
+    return new_boxes
 
 
 def transform():
