@@ -1,9 +1,3 @@
-#  Copyright (c) 2020. Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-#  Morbi non lorem porttitor neque feugiat blandit. Ut vitae ipsum eget quam lacinia accumsan.
-#  Etiam sed turpis ac ipsum condimentum fringilla. Maecenas magna.
-#  Proin dapibus sapien vel ante. Aliquam erat volutpat. Pellentesque sagittis ligula eget metus.
-#  Vestibulum commodo. Ut rhoncus gravida arcu.
-
 import json
 import os
 import random
@@ -384,7 +378,8 @@ def transform(image, boxes, labels, difficulties, split):
 
     return new_image, new_boxes, new_labels, new_difficulties
 
-def decimate(tensor:torch.Tensor, m):
+
+def decimate(tensor: torch.Tensor, m):
     """
     Decimate a tensor by a factor 'm', i.e. downsample by keeping every 'm'th value.
 
@@ -394,11 +389,54 @@ def decimate(tensor:torch.Tensor, m):
     :param m: list of decimation factors for each dimension of the tensor; None if not to be decimated along a dimension
     :return: decimated tensor
     """
-    assert  tensor.dim() == len(m)
+    assert tensor.dim() == len(m)
     for d in range(tensor.dim()):
         if m[d] is not None:
             tensor = tensor.index_select(dim=d, index=torch.arange(0, end=tensor.size(d), step=m[d]).long())
     return tensor
+
+
+def cxcy_to_xy(cxcy):
+    """
+    Convert bounding boxes from center-size coordinate (c_x, c_y, w, h) to boundary coordinates (x_min, y_min, x_max, y_max)
+    :param cxcy: bounding boxes in center-size coordinates, a tensor of size (n_boxes, 4)
+    :return: bounding boxes in boundary coordinates, a tensor of size (n_boxes, 4)
+    """
+    return torch.cat([cxcy[:, :2] - (cxcy[:, 2:] / 2)], cxcy[:, :2] + (cxcy[:, 2:] / 2), dim=1)
+
+
+def cxcy_to_gcxgcy(cxcy, priors_cxcy):
+    """
+    Encode bounding boxes (that are in center-size form) w.r.t. the corresponding prior boxes (that are in center-size form).
+
+    For the center coordinates, find the offset with respect to the prior box, and scale by the size of the prior box.
+    For the size coordinates, scale by the size of the prior box, and convert to the log-space.
+
+    In the model, we are predicting bounding box coordinates in this encoded form.
+
+    :param cxcy: bounding boxes in center-size coordinates, a tensor of size (n_priors, 4)
+    :param priors_cxcy: prior boxes with respect to which the encoding must be performed, a tensor of size (n_priors, 4)
+    :return: encoded bounding boxes, a tensor of size (n_priors, 4)
+    """
+    return torch.cat([(cxcy[:, :2] - priors_cxcy[:, :2]) / (priors_cxcy[:, 2:] / 10),
+        torch.log(cxcy[:, 2:] / priors_cxcy[:, 2:]) * 5], dim=1)
+
+
+def gcxgcy_to_cxcy(gcxgcy, priors_cxcy):
+    """
+    Decode bounding box coordinates predicted by the model, since they are encoded in the form mentioned above.
+
+    They are decoded into center-size coordinates.
+
+    This is the inverse of the function above.
+
+    :param gcxgcy: encoded bounding boxes, i.e. output of the model, a tensor of size (n_priors, 4)
+    :param priors_cxcy: prior boxes with respect to which the encoding is defined, a tensor of size (n_priors, 4)
+    :return: decoded bounding boxes in center-size form, a tensor of size (n_priors, 4)
+    """
+    return torch.cat([gcxgcy[:, :2] * priors_cxcy[:, 2:] / 10 + priors_cxcy[:, :2],
+        torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]], dim=1)
+
 
 if __name__ == '__main__':
     creat_data_lists(r'D:\OneDrive - zju.edu.cn\dataset\VOC\VOC2007', r'D:\OneDrive - '
