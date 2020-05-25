@@ -1,4 +1,5 @@
 import json
+import sys
 import os
 import random
 import xml.etree.ElementTree as ET
@@ -395,6 +396,13 @@ def decimate(tensor: torch.Tensor, m):
             tensor = tensor.index_select(dim=d, index=torch.arange(0, end=tensor.size(d), step=m[d]).long())
     return tensor
 
+def xy_to_cxcy(xy):
+    """
+    Convert bounding boxes from boundary coordinates (x_min, y_min, x_max, y_max) to center-size coordinate (c_x, c_y, w, h)
+    :param xy: bounding boxes in boundary coordinates, a tensor of size (n_boxes, 4)
+    :return: bounding boxes in center-size coordinates, a tensor of size (n_boxes, 4)
+    """
+    return torch.cat([(xy[:, :2] + xy[:, 2:]) / 2, xy[:, 2:] - xy[:, :2]], dim=1)
 
 def cxcy_to_xy(cxcy):
     """
@@ -436,6 +444,87 @@ def gcxgcy_to_cxcy(gcxgcy, priors_cxcy):
     """
     return torch.cat([gcxgcy[:, :2] * priors_cxcy[:, 2:] / 10 + priors_cxcy[:, :2],
         torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]], dim=1)
+
+def clip_gradient(optimizer, grad_clip):
+    """
+    Clips gradients computed during backpropagation to avoid explosion of gradients
+    :param optimizer: optimizer with the gradients to be clipped
+    :param grad_clip: clip value
+    """
+    for group in optimizer.param_groups:
+        for param in group['params']:
+            if param.grad is not None:
+                param.grad.data.clip_(-grad_clip, grad_clip)
+
+class Logger(object):
+    def __init__(self):
+        self.terminal = sys.stdout
+        self.file = None
+
+    def open(self, file, mode=None):
+        if mode is None:
+            mode = 'w'
+        self.file = open(file, mode=mode)
+
+    def write(self, message, is_terminal=1, is_file=1):
+        if '\r' in message:
+            is_file = 0
+        if is_terminal == 1:
+            self.terminal.write(message)
+            self.terminal.flush()
+
+        if is_file == 1:
+            self.file.write(message)
+            self.file.flush()
+
+    def flush(self):
+        # this flush method is needed for python 3 compatibility.
+        # this handles the flush command by doing nothing.
+        # you might want to specify some extra behavior here.
+        pass
+
+class AverageMeter(object):
+    """
+    Keeps track of most recent, average, sum, and count of a metric
+    """
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update
+
+
+
+def save_checkpoints(file_name, epoch, model, optimizer):
+    """
+    Save model checkpoint.
+    :param epoch: epoch number
+    :param model: model
+    :param optimizer: optimizer
+    :return:
+    """
+    state = {
+        'epoch': epoch ,
+        'model': model,
+        'optimizer': optimizer
+    }
+    torch.save(state, file_name)
+
+def adjust_learning_rate(optimizer, scale):
+    """
+    Scale learning rate by a specified factor
+    :param optimizer: optimizer whose learning rate must be shrunk
+    :param scale: facotr to multiply learning rate with
+    :return:
+    """
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = param_group['lr'] * scale
+    print("DECAYING learning rate.\n The new LR is %f\n" % (optimizer.param_groups[1]['lr']))
 
 
 if __name__ == '__main__':

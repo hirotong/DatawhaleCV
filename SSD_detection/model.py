@@ -3,11 +3,13 @@
 # @ Date: 2020/5/22 18:16
 # @ Description: CNN model for SSD detection network
 
-from torch import nn
-from .utils import *
-import torchvision
-import torch.nn.functional as F
 from math import sqrt
+
+import torch.nn.functional as F
+import torchvision
+from torch import nn
+
+from .utils import *
 
 
 class VGGBase(nn.Module):
@@ -344,8 +346,8 @@ class SSD300(nn.Module):
 
         conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats = self.aux_convs(conv7_feats)
 
-        locs, classes_scores = self.pred_convs(conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats,
-            conv10_2_feats, conv11_2_feats)      # (N, 8732, 4), (N, 8732, n_classes)
+        locs, classes_scores = self.pred_convs(conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats, conv10_2_feats,
+            conv11_2_feats)  # (N, 8732, 4), (N, 8732, n_classes)
 
         return locs, classes_scores
 
@@ -354,31 +356,13 @@ class SSD300(nn.Module):
         Create the 8732 prior (default) boxes for the SSD300, as defined in the paper.
         :return: prior boxes in center-size coordinates, a tensor of dimension (8732, 4)
         """
-        fmap_dims = {
-            'conv4_3': 38,
-            'conv7': 19,
-            'conv8_2': 10,
-            'conv9_2': 5,
-            'conv10_2': 3,
-            'conv11_2': 1
-        }
-        obj_scales = {
-            'conv4_3': 0.1,
-            'conv7': 0.2,
-            'conv8_2':0.375,
-            'conv9_2':0.55,
-            'conv10_2':0.725,
-            'conv11_2':0.9
-        }
+        fmap_dims = {'conv4_3': 38, 'conv7': 19, 'conv8_2': 10, 'conv9_2': 5, 'conv10_2': 3, 'conv11_2': 1}
+        obj_scales = {'conv4_3': 0.1, 'conv7': 0.2, 'conv8_2': 0.375, 'conv9_2': 0.55, 'conv10_2': 0.725,
+            'conv11_2': 0.9}
 
-        aspect_ratios = {
-            'conv4_3': [1., 2., 0.5],
-            'conv7': [1., 2., 3., 0.5, 0.333],
-            'conv8_2':[1., 2., 3., 0.5, 0.333],
-            'conv9_2':[1., 2., 3., 0.5, 0.333],
-            'conv10_2':[1., 2., 0.5],
-            'conv11_2':[1., 2., 0.5],
-        }
+        aspect_ratios = {'conv4_3': [1., 2., 0.5], 'conv7': [1., 2., 3., 0.5, 0.333],
+            'conv8_2': [1., 2., 3., 0.5, 0.333], 'conv9_2': [1., 2., 3., 0.5, 0.333], 'conv10_2': [1., 2., 0.5],
+            'conv11_2': [1., 2., 0.5], }
 
         fmaps = list(fmap_dims.keys())
 
@@ -397,17 +381,16 @@ class SSD300(nn.Module):
                         # scale of the current feature map and the scale of the next feature map
                         if ratio == 1:
                             try:
-                                additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k+1]])
+                                additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
                             # For the last feature map, there is no "next" feature map
                             except IndexError:
                                 additional_scale = 1.
                             prior_boxes.append([cx, cy, additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(device)
-        prior_boxes.clamp_(0,1)     #(8732, 4)
+        prior_boxes.clamp_(0, 1)  # (8732, 4)
 
         return prior_boxes
-
 
     def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overlap, top_k):
         """
@@ -424,24 +407,24 @@ class SSD300(nn.Module):
         """
         batch_size = predicted_locs.size(0)
         n_priors = self.priors_cxcy.size(0)
-        predicted_scores = F.softmax(predicted_scores, dim=2)   # (N, 8732, n_classes)
+        predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 8732, n_classes)
 
         # Lists to store final predicted boxes, labels, and scores for all images
         all_images_boxes = list()
         all_images_labels = list()
         all_images_scores = list()
 
-        assert  n_priors == predicted_locs.size(1) == predicted_scores.size(1)
+        assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
         for i in range(batch_size):
             decoded_locs = cxcy_to_xy(
-                gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))    #(8732, 4), these are fractional pt. coordinates
+                gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))  # (8732, 4), these are fractional pt. coordinates
 
             image_boxes = list()
             image_labels = list()
             image_scores = list()
 
-            max_scores, best_label = predicted_scores[i].max(dim=1)     #(8732)
+            max_scores, best_label = predicted_scores[i].max(dim=1)  # (8732)
 
             # Check for each class
             for c in range(1, self.n_classes):
@@ -452,20 +435,20 @@ class SSD300(nn.Module):
                 if n_above_min_score == 0:
                     continue
                 class_scores = class_scores[score_above_min_score]
-                class_decoded_locs = decoded_locs[score_above_min_score]     # (n_qualified, 4)
+                class_decoded_locs = decoded_locs[score_above_min_score]  # (n_qualified, 4)
 
                 # Sort predicted boxes and scores by scores
-                class_scores, sort_ind = class_scores.sort(dim=0, descending=True)      #(n_qualified), (n_min_score)
-                class_decoded_locs = class_decoded_locs[sort_ind]       #(n_min_scores, 4)
+                class_scores, sort_ind = class_scores.sort(dim=0, descending=True)  # (n_qualified), (n_min_score)
+                class_decoded_locs = class_decoded_locs[sort_ind]  # (n_min_scores, 4)
 
                 # Find the overlap between predicted boxes
-                overlap = find_jaccard_overlap(class_decoded_locs, class_decoded_locs)  #(n_qualified, n_min_score)
+                overlap = find_jaccard_overlap(class_decoded_locs, class_decoded_locs)  # (n_qualified, n_min_score)
 
                 # Non-Maximum Suppression (NMS)
 
                 # A torch.uint8 (byte) tensor to keep track of which predicted boxes to suppress
                 # 1 implies suppress, 0 implies don't suppress
-                suppress = torch.zeros((n_above_min_score), dtype=torch.uint8).to(device)   #(n_qualified)
+                suppress = torch.zeros((n_above_min_score), dtype=torch.uint8).to(device)  # (n_qualified)
 
                 for box in range(class_decoded_locs.size(0)):
                     if suppress[box] == 1:
@@ -479,9 +462,9 @@ class SSD300(nn.Module):
                     suppress[box] = 0
 
                 # Store only unsuppressed boxes for this class
-                image_boxes.append(class_decoded_locs[1-suppress])
-                image_labels.append(torch.LongTensor((1-suppress).sum().item() * [c]).to(device))
-                image_scores.append(class_scores[1-suppress])
+                image_boxes.append(class_decoded_locs[1 - suppress])
+                image_labels.append(torch.LongTensor((1 - suppress).sum().item() * [c]).to(device))
+                image_scores.append(class_scores[1 - suppress])
 
             # If no object in any class is found, store a placeholder for 'background'
             if len(image_boxes) == 0:
@@ -490,7 +473,7 @@ class SSD300(nn.Module):
                 image_scores.append(torch.FloatTensor([0.]).to(device))
 
             # Concatenate into single tensors
-            image_boxes = torch.stack(image_boxes, dim=0)   # (n_objects, 4)
+            image_boxes = torch.stack(image_boxes, dim=0)  # (n_objects, 4)
             image_labels = torch.cat(image_labels, dim=0)  # (n_objects)
             image_scores = torch.cat(image_scores, dim=0)  # (n_objects)
             n_objects = image_scores.size(0)
@@ -506,6 +489,105 @@ class SSD300(nn.Module):
             all_images_labels.append(image_labels)
             all_images_scores.append(image_scores)
 
-        return all_images_boxes, all_images_labels, all_images_scores   # lists of length batch_size
+        return all_images_boxes, all_images_labels, all_images_scores  # lists of length batch_size
 
+
+class MultiBoxLoss(nn.Module):
+    """
+    The Multibox loss, a loss function for object detection.
+
+    This is a combination of :
+    (1) a localization loss for the predicted locations of the boxes, and
+    (2) a confidence loss for the predicted class scores.
+    """
+
+    def __init__(self, priors_cxcy, threshold=0.5, neg_pos_ratio=3, alpha=1.):
+        super(MultiBoxLoss, self).__init__()
+        self.priors_cxcy = priors_cxcy
+        self.priors_xy = cxcy_to_xy(priors_cxcy)
+        self.threshold = threshold
+        self.neg_pos_ratio = neg_pos_ratio
+        self.alpha = alpha
+
+        self.smooth_l1 = nn.SmoothL1Loss()
+        self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+
+    def forward(self, predicted_locs, predicted_scores, boxes, labels):
+        """
+        Forward propagation
+        :param predicted_locs: predicted locations/boxes w.r.t the 8732 prior boxes, a tensor of dimensions (N, 8732, 4)
+        :param predicted_scores: class scores for each of the encoded locations/boxes, a tensor of dimensions (N, 8732, n_classes)
+        :param boxes: true  object bounding boxes in boundary coordinates, a list of N tensors
+        :param labels: true object labels, a list of N tensors
+        :return: multibox loss, a scalar
+        """
+        batch_size = predicted_locs.size(0)
+        n_priors = self.priors_cxcy.size(0)
+        n_classes = predicted_scores.size(2)
+
+        assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
+
+        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(device)  # (N, 8732, 4)
+        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.float).to(device)  # (N, 8732)
+
+        # For each image
+        for i in range(batch_size):
+            n_objects = boxes[i].size(0)
+
+            overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # (n_objects, 8732)
+
+            # For each prior, find the object that has the maximum overlap
+            overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (8732)
+
+            # We don't want a situation where an object is not represented in our positive (non-background) priors -  # 1. An object might not be the best object for all priors, and is therefore not in object_for_each_prior.    # 2. All priors with the object may be assigned as background based on the threshold (0.5).
+
+            # To remedy this -
+            # First find the prior that has the maximum overlap for each object.
+            _, prior_for_each_object = overlap.max(dim=1)  # (n_object)
+
+            # Then, assign each object to the corresponding maximum-overlap-prior.(This fixes 1.)
+            object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(device)
+
+            overlap_for_each_prior[prior_for_each_object] = 1.
+
+            label_for_each_prior = labels[i][object_for_each_prior]  # (8732)
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0  # (8732)
+
+            true_classes[i] = label_for_each_prior
+            true_locs[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)  # (8732, 4)
+
+        positive_priors = true_classes != 0
+        # Localization loss
+
+        loc_loss = self.smooth_l1(predicted_locs[positive_priors], true_locs[positive_priors])
+
+        # Note: indexing with a torch.uint8 (byte) tensor flattens the tensor when indexing is across multiple dimensions (N & 8732)  # So, if predicted_locs has the shape (N, 8732, 4), predicted_locs[positive_priors] will have (total positives, 4)
+
+        # Confidence loss
+
+        # Confidence loss is computed over positive priors and the most difficult (hardest) negative priors in each image
+        # That is, FOR EACH IMAGE,
+        # we will take the hardest (neg_pos_ratio * n_positives) negative priors, i.e where there is maximum loss
+        # This is called Hard Negative Mining - it concentrates on hardest negatives in each image, and also minimizes pos/neg imbalance
+
+        n_positives = positive_priors.sum(dim=1)    #(N)
+        n_hard_negatives = self.neg_pos_ratio * n_positives #(N)
+
+        conf_loss_all = self.cross_entropy(predicted_scores.view(-1, n_classes), true_classes.view(-1)) #(N, 8732)
+        conf_loss_all = conf_loss_all.view(batch_size, n_priors)    #(n, 8732)
+
+        conf_loss_pos = conf_loss_all[positive_priors]  #(sum(n_positives))
+
+        conf_loss_neg = conf_loss_all.clone()
+        conf_loss_neg[positive_priors] = 0. #(N, 8732)
+
+        conf_loss_neg, _ = conf_loss_neg.sort(dim=1, descending=True)   #(N, 8732)
+
+        hardness_ranks = torch.LongTensor(range(n_priors)).unsqueeze(0).expand_as(conf_loss_neg).to(device) #(N, 8732)
+        hard_negatives = hardness_ranks < n_hard_negatives.unsqueeze(1) #(N, 8732)
+        conf_loss_hard_neg = conf_loss_neg[hard_negatives]  #(sum(n_hard_negatives))
+
+        conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()
+
+        return conf_loss + self.alpha * loc_loss
 
