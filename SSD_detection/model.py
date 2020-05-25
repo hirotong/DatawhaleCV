@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import torchvision
 from torch import nn
 
-from .utils import *
+from utils import *
 
 
 class VGGBase(nn.Module):
@@ -87,7 +87,7 @@ class VGGBase(nn.Module):
 
             self.load_state_dict(state_dict)
 
-            print("\nLoaded base model.\n")
+        print("\nLoaded base model.\n")
 
     def forward(self, image):
         """
@@ -528,7 +528,7 @@ class MultiBoxLoss(nn.Module):
         assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
         true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(device)  # (N, 8732, 4)
-        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.float).to(device)  # (N, 8732)
+        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(device)  # (N, 8732)
 
         # For each image
         for i in range(batch_size):

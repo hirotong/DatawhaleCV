@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import torch
 import torchvision.transforms.functional as FT
 
+# device = torch.device('cpu')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 voc_labels = (
@@ -165,7 +166,7 @@ def photometric_distort(image):
 
     for d in distortions:
         if random.random() < 0.5:
-            if d.__name__ is 'adjust_hue':
+            if d.__name__ == 'adjust_hue':
                 adjust_factor = random.uniform(-18 / 255., 18 / 255.)
             else:
                 adjust_factor = random.uniform(0.5, 1.5)
@@ -331,7 +332,7 @@ def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
         new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
         new_boxes = new_boxes * new_dims
 
-    return new_boxes
+    return new_image, new_boxes
 
 
 def transform(image, boxes, labels, difficulties, split):
@@ -410,7 +411,7 @@ def cxcy_to_xy(cxcy):
     :param cxcy: bounding boxes in center-size coordinates, a tensor of size (n_boxes, 4)
     :return: bounding boxes in boundary coordinates, a tensor of size (n_boxes, 4)
     """
-    return torch.cat([cxcy[:, :2] - (cxcy[:, 2:] / 2)], cxcy[:, :2] + (cxcy[:, 2:] / 2), dim=1)
+    return torch.cat([cxcy[:, :2] - (cxcy[:, 2:] / 2), cxcy[:, :2] + (cxcy[:, 2:] / 2)], dim=1)
 
 
 def cxcy_to_gcxgcy(cxcy, priors_cxcy):
@@ -496,7 +497,11 @@ class AverageMeter(object):
         self.sum = 0
         self.count = 0
 
-    def update
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 
 
 
@@ -513,6 +518,8 @@ def save_checkpoints(file_name, epoch, model, optimizer):
         'model': model,
         'optimizer': optimizer
     }
+    if not os.path.exists(os.path.split(file_name)[0]):
+        os.makedirs(os.path.split(file_name)[0])
     torch.save(state, file_name)
 
 def adjust_learning_rate(optimizer, scale):

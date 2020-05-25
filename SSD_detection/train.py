@@ -8,27 +8,30 @@ import argparse
 import torch.backends.cudnn as cudnn
 import torch
 import torch.utils.data
-from .model import SSD300, MultiBoxLoss
-from .datasets import PascalVOCDataset
-from .utils import *
+from model import SSD300, MultiBoxLoss
+from datasets import PascalVOCDataset
+from utils import *
 
 cudnn.benchmark = True
 
 # Model parameters
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
 n_classes = len(label_map)
 
-# TODO
+log = Logger()
+
 def main(config):
     """
-    Training 
+    Training
     """
-    global label_map
+    global label_map, log
 
     out_dir = './models'
     out_dir = os.path.join('./models', config.model_name)
-    log = Logger()
-    log.open(os.path.join(out_dir, config.model_name+'.txt'), mode='a')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    log.open(os.path.join(out_dir, config.model_name + '.txt'), mode='a')
     log.write('\tout_dir = %s\n' % out_dir)
     log.write('\n')
 
@@ -46,9 +49,8 @@ def main(config):
                 else:
                     not_biases.append(param)
 
-        optimizer = torch.optim.SGD(params=[
-            {'params': biases, 'lr': 2 * config.lr},
-            {'params': not_biases}], lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay)
+        optimizer = torch.optim.SGD(params=[{'params': biases, 'lr': 2 * config.lr}, {'params': not_biases}],
+            lr=config.lr, momentum=config.momentum, weight_decay=config.weight_decay)
 
     else:
         checkpoint = torch.load(config.checkpoint)
@@ -69,7 +71,10 @@ def main(config):
         if epoch in config.decay_lr_at:
             adjust_learning_rate(optimizer, config.decay_lr_to)
 
-        train
+        train(train_loader=train_loader, model=model, criterion=criterion, optimizer=optimizer, epoch=epoch)
+
+        # Save checkpoint
+        save_checkpoints(os.path.join(out_dir, 'checkpoint', 'checkpoint_epoch_{0}.pth.tar'.format(epoch+1)))
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -84,8 +89,46 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     model.train()
 
-    bat
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
 
+    start = time.time()
+
+    for i, (images, boxes, labels, _) in enumerate(train_loader):
+        data_time.update(time.time() - start)
+
+        images = images.to(device)
+        boxes = [b.to(device) for b in boxes]
+        labels = [l.to(device) for l in labels]
+
+        predicted_locs, predicted_scores = model(images)  # (N, 8732, 4), (N, 8732, n_classes)
+
+        loss = criterion(predicted_locs, predicted_scores, boxes, labels)  # scalar
+
+        optimizer.zero_grad()
+        loss.backward()
+
+        if config.grad_clip is not None:
+            clip_gradient(optimizer, config.grad_clip)
+
+        optimizer.step()
+
+        losses.update(loss.item(), images.size(0))
+        batch_time.update(time.time() - start)
+
+        start = time.time()
+
+        # Print status
+        if i % config.print_freq == 0:
+            global log
+            log.write('Epoch: [{0}][{1}/{2}]\t'
+                      'Batch Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                      'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(epoch, i, len(train_loader),
+                batch_time=batch_time, data_time=data_time, loss=losses))
+
+    del predicted_locs, predicted_scores, images, boxes, labels  # free some memory since their histories may be stored
 
 
 if __name__ == '__main__':
@@ -98,10 +141,10 @@ if __name__ == '__main__':
     parser.add_argument('--keep_difficult', type=bool, default=True)
 
     # Learning parameters
-    parser.add_argument('--chcekpoint', type=str, default=None)
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--checkpoint', type=str, default=None)
+    parser.add_argument('--batch_size', type=int, default=5)
     parser.add_argument('--epochs', type=int, default=250)
-    parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--print_freq', type=int, default=200)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--decay_lr_at', type=list, default=[150, 200])

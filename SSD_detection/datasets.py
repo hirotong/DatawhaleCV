@@ -12,7 +12,7 @@ import json
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-from .utils import transform
+from utils import transform
 
 
 class PascalVOCDataset(Dataset):
@@ -53,7 +53,7 @@ class PascalVOCDataset(Dataset):
             difficulties = difficulties[1-difficulties]
 
         # Apply transformations
-        # image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split)
+        image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split)
 
         return image, boxes, labels, difficulties
 
