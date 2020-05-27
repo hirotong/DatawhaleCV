@@ -1,9 +1,3 @@
-#  Copyright (c) 2020. Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-#  Morbi non lorem porttitor neque feugiat blandit. Ut vitae ipsum eget quam lacinia accumsan.
-#  Etiam sed turpis ac ipsum condimentum fringilla. Maecenas magna.
-#  Proin dapibus sapien vel ante. Aliquam erat volutpat. Pellentesque sagittis ligula eget metus.
-#  Vestibulum commodo. Ut rhoncus gravida arcu.
-
 # !/usr/bin/env python
 # !-*-coding:utf-8-*-
 
@@ -14,6 +8,10 @@ import torch
 from torch.utils.data import Dataset
 from utils import transform
 
+class SVHNDataset(Dataset):
+    def __init__(self, data_dir: str, split: str):
+        self.split = split.upper()
+        assert
 
 class PascalVOCDataset(Dataset):
     def __init__(self, data_dir: str, split: str, keep_difficult=False):
