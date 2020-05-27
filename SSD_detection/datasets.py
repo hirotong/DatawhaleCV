@@ -8,10 +8,32 @@ import torch
 from torch.utils.data import Dataset
 from utils import transform
 
+
 class SVHNDataset(Dataset):
     def __init__(self, data_dir: str, split: str):
         self.split = split.upper()
-        assert
+        assert self.split in {'TRAIN', 'VAL', 'TEST'}
+
+        self.data_folder = data_dir
+
+        with open(os.path.join(data_dir, self.split + '.txt'), 'r') as f:
+            self.images = f.readlines()
+        with open(os.path.join(data_dir, 'mchar_' + self.split + '.json'), 'r') as j:
+            self.objects = json.load(j)
+
+        assert len(self.images) == len(self.objects)
+
+    def __getitem__(self, index):
+
+        image = Image.open(os.path.join(self.data_folder, self.images[index].strip()), mode='r')
+        image = image.convert('RGB')
+
+        object = self.objects[os.path.split(self.images[index].strip())[1]]
+
+        return image, object
+
+
+
 
 class PascalVOCDataset(Dataset):
     def __init__(self, data_dir: str, split: str, keep_difficult=False):
@@ -40,15 +62,15 @@ class PascalVOCDataset(Dataset):
         image = image.convert('RGB')
 
         objects = self.objects[index]
-        boxes = torch.FloatTensor(objects['boxes'])     #(n_objects, 4)
-        labels = torch.FloatTensor(objects['labels'])   #(n_objects)
-        difficulties = torch.ByteTensor(objects['difficulties'])    #(n_objects)
+        boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
+        labels = torch.FloatTensor(objects['labels'])  # (n_objects)
+        difficulties = torch.ByteTensor(objects['difficulties'])  # (n_objects)
 
         # Discard difficult objects, if desired
         if not self.keep_difficult:
             boxes = boxes[1 - difficulties]
             labels = labels[1 - difficulties]
-            difficulties = difficulties[1-difficulties]
+            difficulties = difficulties[1 - difficulties]
 
         # Apply transformations
         image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split)
@@ -83,11 +105,8 @@ class PascalVOCDataset(Dataset):
 
         return images, boxes, labels, difficulties  # tensor (N, 3, 300, 300), 3 lists of N tensors each
 
+
 if __name__ == '__main__':
-    dataset = PascalVOCDataset('./', 'TRAIN')
+    dataset = SVHNDataset('../Dataset', 'TRAIN')
     data = next(iter(dataset))
     print(data)
-
-
-
-
