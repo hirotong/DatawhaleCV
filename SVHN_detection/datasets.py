@@ -33,7 +33,11 @@ class SVHNDataset(Dataset):
         if self.split != 'test':
             object = self.objects[self.images[index]]
             boxes = torch.FloatTensor(list(zip(object['left'], object['top'], object['width'], object['height'])))
-            labels = torch.FloatTensor(object['label'])
+            boxes = torch.cat([boxes[:, :2], boxes[:, :2] + boxes[:, 2:]], dim=1)
+            labels = torch.LongTensor(object['label']) + 1
+
+        # Apply transformations
+        image, boxes, labels = transform(image, boxes, labels, split=self.split)
 
         return image, boxes, labels
 
@@ -132,7 +136,7 @@ class PascalVOCDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = SVHNDataset('../Dataset', 'val')
+    dataset = SVHNDataset('../Dataset', 'train')
     data = next(iter(dataset))
-    data[0].show()
     print(data)
+    data[0].show()

@@ -1,51 +1,28 @@
-import json
-import sys
-import os
 import glob
+import json
+import os
 import random
-import xml.etree.ElementTree as ET
+import sys
 
 import torch
 import torchvision.transforms.functional as FT
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-voc_labels = (
-    'aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable', 'dog',
-    'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor')
+svhn_labels = tuple(str(i) for i in range(10))
 
+svhn_label_map = {k: v + 1 for v, k in enumerate(svhn_labels)}
 
-label_map = {k: v + 1 for v, k in enumerate(voc_labels)}
-label_map['background'] = 0
+svhn_label_map['background'] = 0
 
-rev_label_map = {v: k for k, v in label_map.items()}
+rev_label_map = {v: k for k, v in svhn_label_map.items()}
 
+distinct_colors = ['#e6194b', '#3cb44b', '#ffe119', '#0082c8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#d2f53c',
+    '#fabebe', '#008080', '#000080', '#aa6e28', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#e6beff',
+    '#808080', '#FFFFFF']
 
-def parse_annotation(annotation_path):
-    tree = ET.parse(annotation_path)
-    root = tree.getroot()
+label_color_map = {k: distinct_colors[i] for i, k in enumerate(svhn_label_map.keys())}
 
-    boxes = list()
-    labels = list()
-    difficulties = list()
-    for object in root.iter('object'):
-        difficult = int(object.find('difficult').text == '1')
-
-        label = object.find('name').text.lower().strip()
-        if label not in label_map:
-            continue
-
-        bbox = object.find('bndbox')
-        xmin = int(bbox.find('xmin').text) - 1
-        ymin = int(bbox.find('ymin').text) - 1
-        xmax = int(bbox.find('xmax').text) - 1
-        ymax = int(bbox.find('ymax').text) - 1
-
-        boxes.append([xmin, ymin, xmax, ymax])
-        labels.append(label_map[label])
-        difficulties.append(difficult)
-
-    return {'boxes': boxes, 'labels': labels, 'difficulties': difficulties}
 
 def create_svhn_list(data_path, output_folder):
     image_path = list()
@@ -54,80 +31,6 @@ def create_svhn_list(data_path, output_folder):
     paths = [os.path.split(i)[1] for i in paths]
     with open(os.path.join(output_folder, "mchar_test.json"), 'w') as j:
         json.dump(paths, j)
-
-
-
-
-
-def creat_data_lists(voc07_path, voc12_path, output_folder):
-    """
-    Create lists of images, the bounding boxes and labels of the objects in these images, and save these to file.
-
-    :param voc07_path: path to the 'VOC2007' folder
-    :param voc12_path: path to the 'VOC2012' folder
-    :param output_folder: folder where the JSONs must be saved
-    """
-
-    voc07_path = os.path.abspath(voc07_path)
-    voc12_path = os.path.abspath(voc12_path)
-
-    train_images = list()
-    train_objects = list()
-    n_objects = 0
-
-    # Training data
-    for path in [voc07_path, voc12_path]:
-        with open(os.path.join(path, 'Imagesets/Main/trainval.txt')) as f:
-            ids = f.read().splitlines()
-
-        for id in ids:
-            objects = parse_annotation(os.path.join(path, 'Annotations', id + '.xml'))
-            if len(objects) == 0:
-                continue
-
-            n_objects += len(objects['boxes'])
-            train_objects.append(objects)
-            train_images.append(os.path.join(path, 'JPEGImages', id + '.jpg'))
-
-    assert len(train_objects) == len(train_images)
-
-    with open(os.path.join(output_folder, 'train_images.json'), 'w') as j:
-        json.dump(train_images, j)
-    with open(os.path.join(output_folder, 'train_objects.json'), 'w') as j:
-        json.dump(train_objects, j)
-    with open(os.path.join(output_folder, 'label_map.json'), 'w') as j:
-        json.dump(label_map, j)
-
-    print('\nThere are %d training images containing a total of %d objects. Files have been saved to %s.' % (
-        len(train_images), n_objects, os.path.abspath(output_folder)))
-
-    # Test data
-    test_images = list()
-    test_objects = list()
-    n_objects = 0
-
-    with open(os.path.join(voc07_path, 'ImageSets/Main/test.txt')) as f:
-        ids = f.read().splitlines()
-
-    for id in ids:
-        # Parse annotation's XML file
-        objects = parse_annotation(os.path.join(voc07_path, 'Annotations', id + '.xml'))
-        if len(objects) == 0:
-            continue
-        test_objects.append(objects)
-        n_objects += len(objects['boxes'])
-        test_images.append(os.path.join(voc07_path, 'JPEGImages', id + '.jpg'))
-
-    assert len(test_objects) == len(test_images)
-
-    # Save to file
-    with open(os.path.join(output_folder, 'TEST_images.json'), 'w') as j:
-        json.dump(test_images, j)
-    with open(os.path.join(output_folder, 'TEST_objects.json'), 'w') as j:
-        json.dump(test_objects, j)
-
-    print('\nThere are %d test images containing a total of %d objects. Files have been saved to %s.' % (
-        len(test_images), n_objects, os.path.abspath(output_folder)))
 
 
 def find_intersection(set_1: torch.Tensor, set_2: torch.Tensor):
@@ -191,7 +94,6 @@ def photometric_distort(image):
 def expand(image: torch.Tensor, boxes: torch.Tensor, filler):
     """
     Perform a zooming out operation by placing the image in a larger canvas of filler material.
-
     Helps to learn to detect smaller objects.
     :param image: image, a tensor of dimensions ( 3, h, w)
     :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
@@ -223,7 +125,7 @@ def expand(image: torch.Tensor, boxes: torch.Tensor, filler):
     return new_image, new_boxes
 
 
-def random_crop(image: torch.Tensor, boxes, labels, difficulties):
+def random_crop(image: torch.Tensor, boxes, labels):
     """
     Performs a random crop in the manner stated in the paper. Helps to learn to detect larger and partial objects.
 
@@ -247,7 +149,7 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
 
         # If not cropping
         if min_overlap is None:
-            return image, boxes, labels, difficulties
+            return image, boxes, labels
 
         # Try up to 50 times for this choice of minimum overlap
         # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
@@ -291,7 +193,6 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
             # Discard the bouding boxes that don't meet this criterion
             new_boxes = boxes[centers_in_crop, :]
             new_labels = labels[centers_in_crop]
-            new_difficulties = difficulties[centers_in_crop]
 
             # Calculate bounding boxes' new coordinates in the crop
             new_boxes[:, :2] = torch.max(new_boxes[:, :2], crop[:2])  # crop[:2] is [left, top]
@@ -299,7 +200,7 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
             new_boxes[:, 2:] = torch.min(new_boxes[:, 2:], crop[2:])  # crop[2:] is [right, bottom]
             new_boxes[:, 2:] -= crop[:2]
 
-            return new_image, new_boxes, new_labels, new_difficulties
+            return new_image, new_boxes, new_labels
 
 
 def flip(image, boxes):
@@ -344,10 +245,10 @@ def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
         new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
         new_boxes = new_boxes * new_dims
 
-    return new_boxes
+    return new_image, new_boxes
 
 
-def transform(image, boxes, labels, difficulties, split):
+def transform(image, boxes, labels, split):
     """
     Apply the transformations above.
 
@@ -359,7 +260,7 @@ def transform(image, boxes, labels, difficulties, split):
     :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
     """
 
-    assert split in {'TRAIN', 'TEST'}
+    assert split in {'train', 'val', 'test'}
 
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
@@ -367,17 +268,15 @@ def transform(image, boxes, labels, difficulties, split):
     new_image = image
     new_boxes = boxes
     new_labels = labels
-    new_difficulties = difficulties
 
-    if split == 'TRAIN':
+    if split == 'train':
         new_image = photometric_distort(new_image)
 
         new_image = FT.to_tensor(new_image)
 
         if random.random() < 0.5:
             new_image, new_boxes = expand(new_image, boxes, filler=mean)
-            new_image, new_boxes, new_labels, new_difficulties = random_crop(new_image, new_boxes, new_labels,
-                new_difficulties)
+            new_image, new_boxes, new_labels = random_crop(new_image, new_boxes, new_labels)
 
         # Convert Torch tensor to PIL image
         new_image = FT.to_pil_image(new_image)
@@ -390,7 +289,7 @@ def transform(image, boxes, labels, difficulties, split):
     new_image = FT.to_tensor(new_image)
     new_image = FT.normalize(new_image, mean=mean, std=std)
 
-    return new_image, new_boxes, new_labels, new_difficulties
+    return new_image, new_boxes, new_labels
 
 
 def decimate(tensor: torch.Tensor, m):
@@ -409,6 +308,7 @@ def decimate(tensor: torch.Tensor, m):
             tensor = tensor.index_select(dim=d, index=torch.arange(0, end=tensor.size(d), step=m[d]).long())
     return tensor
 
+
 def xy_to_cxcy(xy):
     """
     Convert bounding boxes from boundary coordinates (x_min, y_min, x_max, y_max) to center-size coordinate (c_x, c_y, w, h)
@@ -416,6 +316,7 @@ def xy_to_cxcy(xy):
     :return: bounding boxes in center-size coordinates, a tensor of size (n_boxes, 4)
     """
     return torch.cat([(xy[:, :2] + xy[:, 2:]) / 2, xy[:, 2:] - xy[:, :2]], dim=1)
+
 
 def cxcy_to_xy(cxcy):
     """
@@ -458,6 +359,7 @@ def gcxgcy_to_cxcy(gcxgcy, priors_cxcy):
     return torch.cat([gcxgcy[:, :2] * priors_cxcy[:, 2:] / 10 + priors_cxcy[:, :2],
         torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]], dim=1)
 
+
 def clip_gradient(optimizer, grad_clip):
     """
     Clips gradients computed during backpropagation to avoid explosion of gradients
@@ -468,6 +370,7 @@ def clip_gradient(optimizer, grad_clip):
         for param in group['params']:
             if param.grad is not None:
                 param.grad.data.clip_(-grad_clip, grad_clip)
+
 
 class Logger(object):
     def __init__(self):
@@ -496,10 +399,12 @@ class Logger(object):
         # you might want to specify some extra behavior here.
         pass
 
+
 class AverageMeter(object):
     """
     Keeps track of most recent, average, sum, and count of a metric
     """
+
     def __init__(self):
         self.reset()
 
@@ -516,7 +421,6 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-
 def save_checkpoints(file_name, epoch, model, optimizer):
     """
     Save model checkpoint.
@@ -525,14 +429,11 @@ def save_checkpoints(file_name, epoch, model, optimizer):
     :param optimizer: optimizer
     :return:
     """
-    state = {
-        'epoch': epoch ,
-        'model': model,
-        'optimizer': optimizer
-    }
+    state = {'epoch': epoch, 'model': model, 'optimizer': optimizer}
     if not os.path.exists(os.path.split(file_name)[0]):
         os.makedirs(os.path.split(file_name)[0])
     torch.save(state, file_name)
+
 
 def adjust_learning_rate(optimizer, scale):
     """
@@ -546,7 +447,7 @@ def adjust_learning_rate(optimizer, scale):
     print("DECAYING learning rate.\n The new LR is %f\n" % (optimizer.param_groups[1]['lr']))
 
 
-def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties):
+def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, n_classes):
     """
     Calculate the Mean Average Precision (mAP) of detected objects.
 
@@ -556,22 +457,20 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     :param det_scores: list of tensors, one tensor for each image containing detected objects' labels' scores
     :param true_boxes: list of tensors, one tensor for each image containing actual objects' bounding boxes
     :param true_labels: list of tensors, one tensor for each image containing actual objects' labels
-    :param true_difficulties: list of tensors, one tensor for each image containing actual objects' difficulty (0 or 1)
     :param n_classes: num of classes
     :return: list of average precisions for all classes, mean average precision (mAP)
     """
-    assert len(det_boxes) == len(det_labels) == len(det_scores) == len(true_boxes) == len(true_labels) == len(
-        true_difficulties)  # these are all lists of tensors of the same length, i.e. number of images
+    assert len(det_boxes) == len(det_labels) == len(det_scores) == len(true_boxes) == len(
+        true_labels)  # these are all lists of tensors of the same length, i.e. number of images
 
-    n_classes = len(label_map)
+    # n_classes = len(label_map)
     # Store all (true) objects in a single continuous tensor while keeping track of the image it is from
     true_images = list()
     for i in range(len(true_labels)):
         true_images.extend([i] * true_labels[i].size(0))
-    true_images = torch.LongTensor(true_images).to(device)  #(n_objects)
-    true_boxes = torch.cat(true_boxes, dim=0)   #(n_objects, 4)
-    true_labels = torch.cat(true_labels, dim=0) #(n_objcets)
-    true_difficulties = torch.cat(true_difficulties, dim=0)     #(n_objects)
+    true_images = torch.LongTensor(true_images).to(device)  # (n_objects)
+    true_boxes = torch.cat(true_boxes, dim=0)  # (n_objects, 4)
+    true_labels = torch.cat(true_labels, dim=0)  # (n_objcets)
 
     assert true_images.size(0) == true_boxes.size(0) == true_labels.size(0)
 
@@ -587,17 +486,16 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     assert det_images.size(0) == det_boxes.size(0) == det_labels.size(0) == det_scores.size(0)
 
     # Calculate APs for each class (except background)
-    avarage_precisions = torch.zeros((n_classes-1), dtype=torch.float)  #(n_classes-1)
+    avarage_precisions = torch.zeros((n_classes - 1), dtype=torch.float)  # (n_classes-1)
 
     for c in range(1, n_classes):
         true_class_images = true_images[true_labels == c]
         true_class_boxes = true_boxes[true_labels == c]
-        true_class_difficulties = true_difficulties[true_labels == c]
-        n_easy_class_objects = (1 - true_class_difficulties).sum().item()
+        n_class_objects = true_class_images.size(0)
 
         # Keep track of which true objects with this class have already been 'detected'
         # So far, none
-        true_class_boxes_detected = torch.zeros((true_class_difficulties.size(0)), dtype=torch.uint8).to(device)
+        true_class_boxes_detected = torch.zeros((true_class_images.size(0)), dtype=torch.uint8).to(device)
 
         # Extract only detections with this class
         det_class_images = det_images[det_labels == c]  # (n_class_detections)
@@ -608,7 +506,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
             continue
 
         # Sort detections in decreasing order of confidence/scores
-        det_class_scores, sort_ind = torch.sort(det_class_scores, dim=0, descending=True)   #(n_class_detections)
+        det_class_scores, sort_ind = torch.sort(det_class_scores, dim=0, descending=True)  # (n_class_detections)
         det_class_images = det_class_images[sort_ind]
         det_class_boxes = det_class_boxes[sort_ind]
 
@@ -616,19 +514,18 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
         false_positives = torch.zeros((n_class_detections), dtype=torch.float).to(device)
 
         for d in range(n_class_detections):
-            this_detection_box = det_class_boxes[d].unsqueeze(0)    #(1, 4)
+            this_detection_box = det_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = det_class_images[d]
 
             # Find objects in the same image with this class, their difficulties,
             # and whether they have been detected before
-            objcet_boxes = true_class_boxes[true_class_images == this_image]    #(n_class_objects_in_img)
-            object_difficulties = true_class_difficulties[true_class_images == this_image]
+            objcet_boxes = true_class_boxes[true_class_images == this_image]  # (n_class_objects_in_img)
 
             if objcet_boxes.size(0) == 0:
                 false_positives[d] = 1
                 continue
 
-            overlaps = find_jaccard_overlap(this_detection_box, objcet_boxes)   #(1, n_class_objects_in_img)
+            overlaps = find_jaccard_overlap(this_detection_box, objcet_boxes)  # (1, n_class_objects_in_img)
 
             max_overlap, ind = torch.max(overlaps.squeeze(0), dim=0)
 
@@ -641,28 +538,23 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
             # If the maximum overlap is greater than the threshold of 0.5, it's a match
             if max_overlap.item() > 0.5:
-                # If the object it matched with is 'difficult', ignore it
-                if object_difficulties[ind] == 0:
-                    # If this object has already not been detected, it's a true positive
-                    if true_class_boxes_detected[original_ind] == 0:
-                        true_positives[d] = 1
-                        true_class_boxes_detected[original_ind] = 1
-                        # this object has now been detected/accounted for
-                        # Otherwise, it's a false positive (since this object is already accounted for)
-                    else:
-                        false_positives[d] = 1
-            # Otherwise, the detection occurs in a different location than the actual object, and is a false positive
-            else:
-                false_positives[d] = 1
+                # If this object has already not been detected, it's a true positive
+                if true_class_boxes_detected[original_ind] == 0:
+                    true_positives[d] = 1
+                    true_class_boxes_detected[original_ind] = 1
+                    # this object has now been detected/accounted for  # Otherwise, it's a false positive (since this object is already accounted for)
+                else:
+                    false_positives[d] = 1
+
         # Compute cumulative precision and recall at each detection in the order of decreasing scores
-        cumul_true_positives = torch.cumsum(true_positives, dim=0)  #(n_class_detections)
+        cumul_true_positives = torch.cumsum(true_positives, dim=0)  # (n_class_detections)
         cumul_false_positives = torch.cumsum(false_positives, dim=0)
-        cumul_precision = cumul_true_positives / (cumul_true_positives + cumul_false_positives + 1e-10) #(
+        cumul_precision = cumul_true_positives / (cumul_true_positives + cumul_false_positives + 1e-10)  # (
         # n_class_detections)
-        cumul_recall = cumul_true_positives / n_easy_class_objects
+        cumul_recall = cumul_true_positives / n_class_objects
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
-        recall_thresholds = torch.arange(start=0, end=1.1, step=0.1).tolist()   #(11)
+        recall_thresholds = torch.arange(start=0, end=1.1, step=0.1).tolist()  # (11)
         precisions = torch.zeros((len(recall_thresholds)), dtype=torch.float).to(device)
 
         for i, t in enumerate(recall_thresholds):
@@ -671,16 +563,14 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
                 precisions[i] = cumul_precision[recalls_above_t].max()
             else:
                 precisions[i] = 0
-        avarage_precisions[c-1] = precisions.mean()
+        avarage_precisions[c - 1] = precisions.mean()
 
     # Calculate Mean Average Precision (mAP)
     mean_average_precision = avarage_precisions.mean().item()
 
-    avarage_precisions = {rev_label_map[c+1] : v for c, v in enumerate(avarage_precisions.tolist())}
+    avarage_precisions = {rev_label_map[c + 1]: v for c, v in enumerate(avarage_precisions.tolist())}
 
     return avarage_precisions, mean_average_precision
-
-
 
 
 if __name__ == '__main__':
