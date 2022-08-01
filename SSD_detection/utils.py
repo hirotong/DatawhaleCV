@@ -25,9 +25,9 @@ def parse_annotation(annotation_path):
     tree = ET.parse(annotation_path)
     root = tree.getroot()
 
-    boxes = list()
-    labels = list()
-    difficulties = list()
+    boxes = []
+    labels = []
+    difficulties = []
     for object in root.iter('object'):
         difficult = int(object.find('difficult').text == '1')
 
@@ -48,7 +48,7 @@ def parse_annotation(annotation_path):
     return {'boxes': boxes, 'labels': labels, 'difficulties': difficulties}
 
 def create_svhn_list(data_path, output_folder):
-    image_path = list()
+    image_path = []
 
     paths = glob.glob(os.path.join(data_path, 'mchar_test') + "/*.png")
     paths = [os.path.split(i)[1] for i in paths]
@@ -71,8 +71,8 @@ def creat_data_lists(voc07_path, voc12_path, output_folder):
     voc07_path = os.path.abspath(voc07_path)
     voc12_path = os.path.abspath(voc12_path)
 
-    train_images = list()
-    train_objects = list()
+    train_images = []
+    train_objects = []
     n_objects = 0
 
     # Training data
@@ -81,13 +81,13 @@ def creat_data_lists(voc07_path, voc12_path, output_folder):
             ids = f.read().splitlines()
 
         for id in ids:
-            objects = parse_annotation(os.path.join(path, 'Annotations', id + '.xml'))
+            objects = parse_annotation(os.path.join(path, 'Annotations', f'{id}.xml'))
             if len(objects) == 0:
                 continue
 
             n_objects += len(objects['boxes'])
             train_objects.append(objects)
-            train_images.append(os.path.join(path, 'JPEGImages', id + '.jpg'))
+            train_images.append(os.path.join(path, 'JPEGImages', f'{id}.jpg'))
 
     assert len(train_objects) == len(train_images)
 
@@ -102,8 +102,8 @@ def creat_data_lists(voc07_path, voc12_path, output_folder):
         len(train_images), n_objects, os.path.abspath(output_folder)))
 
     # Test data
-    test_images = list()
-    test_objects = list()
+    test_images = []
+    test_objects = []
     n_objects = 0
 
     with open(os.path.join(voc07_path, 'ImageSets/Main/test.txt')) as f:
@@ -111,12 +111,15 @@ def creat_data_lists(voc07_path, voc12_path, output_folder):
 
     for id in ids:
         # Parse annotation's XML file
-        objects = parse_annotation(os.path.join(voc07_path, 'Annotations', id + '.xml'))
+        objects = parse_annotation(
+            os.path.join(voc07_path, 'Annotations', f'{id}.xml')
+        )
+
         if len(objects) == 0:
             continue
         test_objects.append(objects)
         n_objects += len(objects['boxes'])
-        test_images.append(os.path.join(voc07_path, 'JPEGImages', id + '.jpg'))
+        test_images.append(os.path.join(voc07_path, 'JPEGImages', f'{id}.jpg'))
 
     assert len(test_objects) == len(test_images)
 
@@ -239,6 +242,12 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
     """
     original_h = image.size(1)
     original_w = image.size(2)
+    # Try up to 50 times for this choice of minimum overlap
+    # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
+    max_trails = 50
+    # Crop dimensions must be in [0.3, 1] of original dimensions
+    # Note - it's [0.1, 1] in the paper, but actually [0.3, 1] in the authors' repo
+    min_scale = 0.3
     # Keep choosing a minimum overlap until a successful crop is made
     while True:
         # Randomly draw the value from minimum overlap
@@ -249,13 +258,7 @@ def random_crop(image: torch.Tensor, boxes, labels, difficulties):
         if min_overlap is None:
             return image, boxes, labels, difficulties
 
-        # Try up to 50 times for this choice of minimum overlap
-        # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
-        max_trails = 50
         for _ in range(max_trails):
-            # Crop dimensions must be in [0.3, 1] of original dimensions
-            # Note - it's [0.1, 1] in the paper, but actually [0.3, 1] in the authors' repo
-            min_scale = 0.3
             scale_h = random.uniform(0.3, 1)
             scale_w = random.uniform(0.3, 1)
             new_h = int(scale_h * original_h)
@@ -565,7 +568,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
     n_classes = len(label_map)
     # Store all (true) objects in a single continuous tensor while keeping track of the image it is from
-    true_images = list()
+    true_images = []
     for i in range(len(true_labels)):
         true_images.extend([i] * true_labels[i].size(0))
     true_images = torch.LongTensor(true_images).to(device)  #(n_objects)
@@ -576,7 +579,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
     assert true_images.size(0) == true_boxes.size(0) == true_labels.size(0)
 
     # Store all detections in a single continuous tensor while keeping track of the image it is from
-    det_images = list()
+    det_images = []
     for i in range(len(det_labels)):
         det_images.extend([i] * det_labels[i].size(0))
     det_images = torch.LongTensor(det_images).to(device)  # (n_detections)

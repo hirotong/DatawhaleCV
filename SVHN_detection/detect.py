@@ -53,9 +53,8 @@ def detect(model, original_image, min_score, max_overlap, top_k, suppress=None):
     font = ImageFont.truetype("MONACO.TTF")
 
     for i in range(det_boxes.size(0)):
-        if suppress is not None:
-            if det_labels[i] in suppress:
-                continue
+        if suppress is not None and det_labels[i] in suppress:
+            continue
 
         box_location = det_boxes[i].tolist()
         draw.rectangle(xy=box_location, outline=label_color_map[det_labels[i]])

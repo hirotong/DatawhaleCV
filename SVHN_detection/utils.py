@@ -25,7 +25,7 @@ label_color_map = {k: distinct_colors[i] for i, k in enumerate(svhn_label_map.ke
 
 
 def create_svhn_list(data_path, output_folder):
-    image_path = list()
+    image_path = []
 
     paths = glob.glob(os.path.join(data_path, 'mchar_test') + "/*.png")
     paths = [os.path.split(i)[1] for i in paths]
@@ -141,6 +141,12 @@ def random_crop(image: torch.Tensor, boxes, labels):
     """
     original_h = image.size(1)
     original_w = image.size(2)
+    # Try up to 50 times for this choice of minimum overlap
+    # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
+    max_trails = 50
+    # Crop dimensions must be in [0.3, 1] of original dimensions
+    # Note - it's [0.1, 1] in the paper, but actually [0.3, 1] in the authors' repo
+    min_scale = 0.3
     # Keep choosing a minimum overlap until a successful crop is made
     while True:
         # Randomly draw the value from minimum overlap
@@ -151,13 +157,7 @@ def random_crop(image: torch.Tensor, boxes, labels):
         if min_overlap is None:
             return image, boxes, labels
 
-        # Try up to 50 times for this choice of minimum overlap
-        # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
-        max_trails = 50
         for _ in range(max_trails):
-            # Crop dimensions must be in [0.3, 1] of original dimensions
-            # Note - it's [0.1, 1] in the paper, but actually [0.3, 1] in the authors' repo
-            min_scale = 0.3
             scale_h = random.uniform(0.3, 1)
             scale_w = random.uniform(0.3, 1)
             new_h = int(scale_h * original_h)
@@ -465,7 +465,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, n_
 
     # n_classes = len(label_map)
     # Store all (true) objects in a single continuous tensor while keeping track of the image it is from
-    true_images = list()
+    true_images = []
     for i in range(len(true_labels)):
         true_images.extend([i] * true_labels[i].size(0))
     true_images = torch.LongTensor(true_images).to(device)  # (n_objects)
@@ -475,7 +475,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, n_
     assert true_images.size(0) == true_boxes.size(0) == true_labels.size(0)
 
     # Store all detections in a single continuous tensor while keeping track of the image it is from
-    det_images = list()
+    det_images = []
     for i in range(len(det_labels)):
         det_images.extend([i] * det_labels[i].size(0))
     det_images = torch.LongTensor(det_images).to(device)  # (n_detections)
