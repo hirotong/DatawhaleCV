@@ -410,9 +410,9 @@ class SSD300(nn.Module):
         predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 8732, n_classes)
 
         # Lists to store final predicted boxes, labels, and scores for all images
-        all_images_boxes = list()
-        all_images_labels = list()
-        all_images_scores = list()
+        all_images_boxes = []
+        all_images_labels = []
+        all_images_scores = []
 
         assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
 
@@ -420,9 +420,9 @@ class SSD300(nn.Module):
             decoded_locs = cxcy_to_xy(
                 gcxgcy_to_cxcy(predicted_locs[i], self.priors_cxcy))  # (8732, 4), these are fractional pt. coordinates
 
-            image_boxes = list()
-            image_labels = list()
-            image_scores = list()
+            image_boxes = []
+            image_labels = []
+            image_scores = []
 
             max_scores, best_label = predicted_scores[i].max(dim=1)  # (8732)
 
@@ -467,7 +467,7 @@ class SSD300(nn.Module):
                 image_scores.append(class_scores[1 - suppress])
 
             # If no object in any class is found, store a placeholder for 'background'
-            if len(image_boxes) == 0:
+            if not image_boxes:
                 image_boxes.append(torch.FloatTensor([[0., 0., 1., 1.]]).to(device))
                 image_labels.append(torch.FloatTensor([0]).to(device))
                 image_scores.append(torch.FloatTensor([0.]).to(device))

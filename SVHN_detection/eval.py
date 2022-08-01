@@ -33,14 +33,14 @@ def evaluate(val_loader, model, n_classes):
 
     model.eval()
 
-    det_boxes = list()
-    det_labels = list()
-    det_scores = list()
-    true_boxes = list()
-    true_labels = list()
+    det_boxes = []
+    det_labels = []
+    det_scores = []
+    true_boxes = []
+    true_labels = []
 
     with torch.no_grad():
-        for i, (images, boxes, labels) in enumerate(tqdm(val_loader, desc="Evaluating")):
+        for images, boxes, labels in tqdm(val_loader, desc="Evaluating"):
             images = images.to(device)
 
             predicted_locs, predicted_scores = model(images)

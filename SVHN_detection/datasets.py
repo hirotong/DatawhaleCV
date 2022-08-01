@@ -16,7 +16,7 @@ class SVHNDataset(Dataset):
 
         self.data_folder = os.path.abspath(os.path.join(data_dir, f'mchar_{self.split}'))
 
-        with open(os.path.join(data_dir, 'mchar_' + self.split + '.json'), 'r') as j:
+        with open(os.path.join(data_dir, f'mchar_{self.split}.json'), 'r') as j:
             self.objects = json.load(j)
         self.images = list(self.objects)
 
@@ -28,8 +28,8 @@ class SVHNDataset(Dataset):
         image = Image.open(os.path.join(self.data_folder,self.images[index]), mode='r')
         image = image.convert('RGB')
 
-        boxes = list()
-        labels = list()
+        boxes = []
+        labels = []
         if self.split != 'test':
             object = self.objects[self.images[index]]
             boxes = torch.FloatTensor(list(zip(object['left'], object['top'], object['width'], object['height'])))
@@ -47,9 +47,9 @@ class SVHNDataset(Dataset):
         :param batch: one batch return by dataset
         :return: image: torch.FloatTensor, boxes: list, labels: list
         """
-        images = list()
-        boxes = list()
-        labels = list()
+        images = []
+        boxes = []
+        labels = []
 
         for b in batch:
             images.append(b[0])
@@ -79,9 +79,9 @@ class PascalVOCDataset(Dataset):
         self.keep_difficult = keep_difficult
 
         # Read data files
-        with open(os.path.join(data_dir, self.split + '_images.json'), 'r') as j:
+        with open(os.path.join(data_dir, f'{self.split}_images.json'), 'r') as j:
             self.images = json.load(j)
-        with open(os.path.join(data_dir, self.split + '_objects.json'), 'r') as j:
+        with open(os.path.join(data_dir, f'{self.split}_objects.json'), 'r') as j:
             self.objects = json.load(j)
 
         assert len(self.images) == len(self.objects)
@@ -120,10 +120,10 @@ class PascalVOCDataset(Dataset):
            :param batch: an iterable of N sets from __getitem__()
            :return: a tensor of images, lists of varying-size tensors of bounding boxes, labels, and difficulties
         """
-        images = list()
-        boxes = list()
-        labels = list()
-        difficulties = list()
+        images = []
+        boxes = []
+        labels = []
+        difficulties = []
         for b in batch:
             images.append(b[0])
             boxes.append(b[1])

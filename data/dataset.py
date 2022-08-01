@@ -42,41 +42,37 @@ class SVHNDataset(Dataset):
         self.mode = mode
         self.img_size = img_size
 
-        self.img_list = load_img_list(os.path.join(self.data_dir, self.mode + '.txt'))
+        self.img_list = load_img_list(os.path.join(self.data_dir, f'{self.mode}.txt'))
         if self.mode != 'test':
-            self.labels = json.load(open(os.path.join(data_dir, 'mchar_' + self.mode + '.json')))
+            self.labels = json.load(
+                open(os.path.join(data_dir, f'mchar_{self.mode}.json'))
+            )
 
         
     def __getitem__(self, index):
         img_name = os.path.split(self.img_list[index])[1]
 
         pil_image = Image.open(os.path.join(ROOT_PATH, self.img_list[index])).convert('RGB').resize(self.img_size)
-        
+
         h, w = pil_image.size
-        
+
         img = self.transform(pil_image)
-        
-        if self.mode != 'test': 
-            label_dict = self.labels[img_name]
 
-            label = np.vstack((label_dict['label'], label_dict['left'], label_dict['top'], label_dict['width'], label_dict['height'])).transpose(1, 0)
+        if self.mode == 'test':
+            return {"image": img}
 
-            if label.shape[0] < 5:
-                for i in range(5 - label.shape[0]):
-                    label = np.concatenate((label, np.ones((1, 5)) * (-1)), axis=0)
-        
-            label = torch.tensor(label, dtype=torch.float32)
 
-            sample = {
-            "image": img,
-            "label": label
-            }
-        else:
-            sample = {
-                "image": img
-            }
+        label_dict = self.labels[img_name]
 
-        return sample
+        label = np.vstack((label_dict['label'], label_dict['left'], label_dict['top'], label_dict['width'], label_dict['height'])).transpose(1, 0)
+
+        if label.shape[0] < 5:
+            for _ in range(5 - label.shape[0]):
+                label = np.concatenate((label, np.ones((1, 5)) * (-1)), axis=0)
+
+        label = torch.tensor(label, dtype=torch.float32)
+
+        return {"image": img, "label": label}
 
     def __len__(self):
         return len(self.img_list)

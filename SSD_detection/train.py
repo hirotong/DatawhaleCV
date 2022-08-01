@@ -31,7 +31,7 @@ def main(config):
     out_dir = os.path.join('./models', config.model_name)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    log.open(os.path.join(out_dir, config.model_name + '.txt'), mode='a')
+    log.open(os.path.join(out_dir, f'{config.model_name}.txt'), mode='a')
     log.write('\tout_dir = %s\n' % out_dir)
     log.write('\n')
 
@@ -40,8 +40,8 @@ def main(config):
         start_epoch = 0
         model = SSD300(n_classes=n_classes)
         # Initialize the optimizer, which twice the default learning rate for bias
-        biases = list()
-        not_biases = list()
+        biases = []
+        not_biases = []
         for param_name, param in model.named_parameters():
             if param.requires_grad:
                 if param_name.endswith('.bias'):
